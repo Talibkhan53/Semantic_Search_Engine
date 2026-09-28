@@ -1,0 +1,7 @@
+A large language model (LLM) is an advanced artificial intelligence system trained on vast amounts of text to understand and generate human-like language.
+
+It relies on a deep learning framework called a transformer to analyze word contexts and relationships.At its core, it functions as a statistical prediction engine that calculates the most likely next word in a sequence.
+
+Industry overviews like GeeksforGeeks show that popular assistants like ChatGPT and Claude are built on this technology.
+
+Users apply LLMs daily for everyday tasks like translation, coding, text summarization, and interactive chatting.
