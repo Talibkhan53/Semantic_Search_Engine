@@ -1,18 +1,27 @@
 from pathlib import Path
 
 class Loader:
-    def file_loads(self,directory_path:Path):
-  
-    #   Get only files in this immediate directory
-      files =  [ f for f in directory_path.iterdir() if f.is_file()]
+    def file_loads(self,path:Path):
+     path = Path(path)
 
-    # Another Way of Writing Above Line
-    #   files = []
-    #   for f in directory_path.iterdir():
-    #      if f.is_file():
-    #         files.append(f)  
-      file_data = {}
-      for f in files:
-        with open(f,'r') as current_file :
-          file_data[f.name] =  current_file.read().strip()
-      return file_data
+     file_data = {}
+     if path.is_file():
+        with open(path,'r') as current_file:
+           file_data[path.name] = current_file.read().strip()
+
+     elif path.is_dir():
+        files = [
+           f for f in path.iterdir()
+           if f.is_file()
+        ]
+
+        for file in files:
+           with open(file,'r') as current_file:
+              file_data[file.name] = current_file.read().strip()
+     return file_data
+      
+
+
+
+      
+        

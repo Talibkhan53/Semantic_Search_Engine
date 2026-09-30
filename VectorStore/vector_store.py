@@ -12,7 +12,7 @@ class VectorStore:
     # STORE EMBEDDINGS
     def store_file_vectors(self, file_embed, path):
 
-        path = str(Path(path).resolve())
+        directory = Path(path).resolve()
 
         data = {}
 
@@ -39,15 +39,25 @@ class VectorStore:
         # Store embeddings
         for file_name, embedding in file_embed.items():
 
+            file_path = directory / file_name
+
             data[str(index)] = {
 
-                "path": path,
+                # Directory containing the file
+                "path": str(directory),
 
+                # Modification time of the individual file
+                "file_time": file_path.stat().st_mtime,
+
+                # Name of the individual file
                 "file_name": file_name,
 
-                "file_embed": embedding.tolist()
-                if isinstance(embedding, np.ndarray)
-                else embedding
+                # Store embedding as a JSON-compatible list
+                "file_embed": (
+                    embedding.tolist()
+                    if isinstance(embedding, np.ndarray)
+                    else embedding
+                )
 
             }
 
@@ -63,10 +73,13 @@ class VectorStore:
             )
 
         print("Vectors stored successfully.")
+
     # CHECK PATH
     def path_exists(self, path):
 
-        path = str(Path(path).resolve())
+        path = Path(path).resolve()
+
+        print(f"Current Path: {path}")
 
         try:
 
@@ -75,23 +88,30 @@ class VectorStore:
 
         except (FileNotFoundError, json.JSONDecodeError):
 
+            print("Vector store could not be loaded.")
+
             return False
 
         for item in data.values():
 
-            stored_path = str(
-                Path(item["path"]).resolve()
-            )
+            stored_path = Path(
+                item["path"]
+            ).resolve()
+
+            print(f"Stored Path: {stored_path}")
 
             if stored_path == path:
+
+                print("Path Matched.")
 
                 return True
 
         return False
+
     # LOAD EMBEDDINGS
     def load_embeddings(self, path):
 
-        path = str(Path(path).resolve())
+        path = Path(path).resolve()
 
         try:
 
@@ -106,9 +126,9 @@ class VectorStore:
 
         for item in data.values():
 
-            stored_path = str(
-                Path(item["path"]).resolve()
-            )
+            stored_path = Path(
+                item["path"]
+            ).resolve()
 
             if stored_path == path:
 
@@ -121,3 +141,43 @@ class VectorStore:
                 embeddings[file_name] = embedding
 
         return embeddings
+
+    # GET CHANGED FILES
+    def get_changed_files(self, path):
+
+        changed_files = []
+
+        try:
+
+            with open(self.file_name, "r") as file:
+                data = json.load(file)
+
+        except (FileNotFoundError, json.JSONDecodeError):
+
+            return changed_files
+
+        directory = Path(path).resolve()
+
+        for item in data.values():
+
+            file_path = directory / item["file_name"]
+
+            # File was deleted
+            if not file_path.exists():
+
+                continue
+
+            # Current modification time
+            current_time = file_path.stat().st_mtime
+
+            # Modification time stored with embedding
+            stored_time = item["file_time"]
+
+            # File has changed
+            if current_time != stored_time:
+
+                changed_files.append(
+                    str(file_path)
+                )
+
+        return changed_files

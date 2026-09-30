@@ -23,34 +23,52 @@ class SearchEngine:
     # Creating EMBEDDINGS
 
     def prepare_data(self, path):
-
-        # Check whether path is already indexed
+        # Check Whether Path is Indexed
         if self.vector_store.path_exists(path):
+            print("Path  already Indexed")
 
-            print("Path already indexed.")
+            changed_files = self.vector_store.get_changed_files(path)
+            if not changed_files:
+                # No Chnages in Files 
+                print("No Changes In Files , Loading Previous Embeddings")
+                return self.vector_store.load_embeddings(path)
+            
+            else:
+                # File Data Has Changed
+                print("Changes in File Data,Creating New Embeddings")
 
-            # Load existing embeddings
-            return self.vector_store.load_embeddings(path)
+                embeddings = self.vector_store.load_embeddings(path)
 
-        # Path does not exist
-        print("Path not indexed.")
-        print("Creating embeddings...")
+                for file_path in changed_files:
+                   file_data =  self.loader.file_loads(file_path)
+                   new_embedding = self.embedding.embed_file(file_data)
+                   embeddings.update(new_embedding)
+                   self.vector_store.store_file_vectors(new_embedding,path)
+            return embeddings
+    # Path does not exist / is not indexed
+        else:
 
-        # Load files
-        file_data = self.loader.file_loads(path)
+            print("Path not indexed.")
+            print("Creating embeddings...")
 
-        # Create embeddings
-        embeddings = self.embedding.embed_file(
-            file_data
-        )
+            # Load ALL files because this is the first indexing
+            file_data = self.loader.file_loads(path)
 
-        # Store embeddings
-        self.vector_store.store_file_vectors(
-            embeddings,
-            path
-        )
+            # Create embeddings
+            embeddings = self.embedding.embed_file(
+                file_data
+            )
 
-        return embeddings
+            # Store embeddings
+            self.vector_store.store_file_vectors(
+                embeddings,
+                path
+            )
+
+            return embeddings
+
+
+        
     # SEARCH
     def search(self, path, query, top_k=3):
 
