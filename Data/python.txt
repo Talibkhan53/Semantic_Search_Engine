@@ -6,4 +6,6 @@ Interpreted Nature: As an interpreted language, Python executes code line-by-lin
 
 Rich Ecosystem: It boasts a massive "batteries-included" standard library and supports powerful third-party frameworks like Django, Pandas, and TensorFlow.
 
- It is a dominant force in modern technology, widely used across data science, artificial intelligence, web development, and automation.
+It is a dominant force in modern technology, widely used across data science, artificial intelligence, web development, and automation.
+
+Python is One of the most used langauges.

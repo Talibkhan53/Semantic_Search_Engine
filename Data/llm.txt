@@ -6,6 +6,4 @@ Industry overviews like GeeksforGeeks show that popular assistants like ChatGPT 
 
 Users apply LLMs daily for everyday tasks like translation, coding, text summarization, and interactive chatting.
 
-I use LLM a lot.
-
 Chat GPT is also AN LLM.

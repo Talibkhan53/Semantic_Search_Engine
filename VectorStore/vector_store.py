@@ -1,6 +1,12 @@
 import json
 import numpy as np
 from pathlib import Path
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s: %(message)s"
+)
 
 
 class VectorStore:
@@ -9,7 +15,7 @@ class VectorStore:
 
         self.file_name = file_name
 
-    # STORE EMBEDDINGS
+    # STORE NEW EMBEDDINGS
     def store_file_vectors(self, file_embed, path):
 
         directory = Path(path).resolve()
@@ -43,27 +49,21 @@ class VectorStore:
 
             data[str(index)] = {
 
-                # Directory containing the file
                 "path": str(directory),
 
-                # Modification time of the individual file
                 "file_time": file_path.stat().st_mtime,
 
-                # Name of the individual file
                 "file_name": file_name,
 
-                # Store embedding as a JSON-compatible list
                 "file_embed": (
                     embedding.tolist()
                     if isinstance(embedding, np.ndarray)
                     else embedding
                 )
-
             }
 
             index += 1
 
-        # Save
         with open(self.file_name, "w") as file:
 
             json.dump(
@@ -72,7 +72,7 @@ class VectorStore:
                 indent=4
             )
 
-        print("Vectors stored successfully.")
+        logging.info("Vectors stored successfully.")
 
     # CHECK PATH
     def path_exists(self, path):
@@ -88,7 +88,9 @@ class VectorStore:
 
         except (FileNotFoundError, json.JSONDecodeError):
 
-            print("Vector store could not be loaded.")
+            logging.warning(
+                "Vector store could not be loaded."
+            )
 
             return False
 
@@ -98,16 +100,18 @@ class VectorStore:
                 item["path"]
             ).resolve()
 
-            print(f"Stored Path: {stored_path}")
+            logging.info(
+                f"Stored Path: {stored_path}"
+            )
 
             if stored_path == path:
 
-                print("Path Matched.")
+                logging.info("Path Matched.")
 
                 return True
 
         return False
-
+    
     # LOAD EMBEDDINGS
     def load_embeddings(self, path):
 
@@ -160,6 +164,15 @@ class VectorStore:
 
         for item in data.values():
 
+            stored_path = Path(
+                item["path"]
+            ).resolve()
+
+            # Only check files belonging
+            # to requested directory
+            if stored_path != directory:
+                continue
+
             file_path = directory / item["file_name"]
 
             # File was deleted
@@ -167,13 +180,11 @@ class VectorStore:
 
                 continue
 
-            # Current modification time
             current_time = file_path.stat().st_mtime
 
-            # Modification time stored with embedding
             stored_time = item["file_time"]
 
-            # File has changed
+            # File was modified
             if current_time != stored_time:
 
                 changed_files.append(
@@ -181,3 +192,228 @@ class VectorStore:
                 )
 
         return changed_files
+
+    # UPDATE EXISTING EMBEDDINGS
+    def update_existing_embeddings(
+        self,
+        path,
+        new_embeddings
+    ):
+
+        directory = Path(path).resolve()
+
+        try:
+
+            with open(self.file_name, "r") as file:
+                data = json.load(file)
+
+        except (FileNotFoundError, json.JSONDecodeError):
+
+            logging.warning(
+                "Error loading vector store."
+            )
+
+            return
+
+        # Go through new embeddings
+        for file_name, embedding in new_embeddings.items():
+
+            file_path = directory / file_name
+
+            if not file_path.exists():
+                continue
+
+            # Find existing record
+            for item in data.values():
+
+                stored_path = Path(
+                    item["path"]
+                ).resolve()
+
+                if (
+                    stored_path == directory
+                    and item["file_name"] == file_name
+                ):
+
+                    # Update embedding
+                    item["file_embed"] = (
+                        embedding.tolist()
+                        if isinstance(
+                            embedding,
+                            np.ndarray
+                        )
+                        else embedding
+                    )
+
+                    # IMPORTANT:
+                    # Update modification time
+                    item["file_time"] = (
+                        file_path.stat().st_mtime
+                    )
+
+                    logging.info(
+                        f"Embedding updated: {file_name}"
+                    )
+
+                    break
+
+        # Save updated vector store
+        with open(self.file_name, "w") as file:
+
+            json.dump(
+                data,
+                file,
+                indent=4
+            )
+
+        logging.info(
+            "Existing embeddings updated successfully."
+        )
+
+    # GET DELETED FILES
+    def get_deleted_files(self, path):
+
+        deleted_files = []
+
+        directory = Path(path).resolve()
+
+        try:
+
+            with open(self.file_name, "r") as file:
+                data = json.load(file)
+
+        except (FileNotFoundError, json.JSONDecodeError):
+
+            return deleted_files
+
+        for item in data.values():
+
+            stored_path = Path(
+                item["path"]
+            ).resolve()
+
+            if stored_path != directory:
+                continue
+
+            file_path = directory / item["file_name"]
+
+            if not file_path.exists():
+
+                deleted_files.append(
+                    item["file_name"]
+                )
+
+        return deleted_files
+
+    # DELETE EMBEDDINGS
+
+    def delete_embeddings(
+        self,
+        path,
+        file_names
+    ):
+
+        directory = Path(path).resolve()
+
+        try:
+
+            with open(self.file_name, "r") as file:
+                data = json.load(file)
+
+        except (FileNotFoundError, json.JSONDecodeError):
+
+            logging.warning(
+                "Error loading vector store."
+            )
+
+            return
+
+        deleted = []
+
+        # list() is important because
+        # we are deleting while iterating
+        for key, item in list(data.items()):
+
+            stored_path = Path(
+                item["path"]
+            ).resolve()
+
+            if (
+                stored_path == directory
+                and item["file_name"] in file_names
+            ):
+
+                deleted.append(
+                    item["file_name"]
+                )
+
+                del data[key]
+
+        # Save only if something was deleted
+        if deleted:
+
+            with open(self.file_name, "w") as file:
+
+                json.dump(
+                    data,
+                    file,
+                    indent=4
+                )
+
+            for file_name in deleted:
+
+                logging.info(
+                    f"Embedding deleted: {file_name}"
+                )
+
+    # GET NEW FILES
+    def get_new_files(self, path):
+
+        directory = Path(path).resolve()
+
+        new_files = []
+
+        try:
+
+            with open(self.file_name, "r") as file:
+                data = json.load(file)
+
+        except (FileNotFoundError, json.JSONDecodeError):
+
+            # If vector store doesn't exist,
+            # all files are new
+            return [
+                str(file)
+                for file in directory.iterdir()
+                if file.is_file()
+            ]
+
+        stored_files = set()
+
+        for item in data.values():
+
+            stored_path = Path(
+                item["path"]
+            ).resolve()
+
+            if stored_path == directory:
+
+                stored_files.add(
+                    item["file_name"]
+                )
+
+        if not directory.exists():
+            return new_files
+
+        for file in directory.iterdir():
+
+            if (
+                file.is_file()
+                and file.name not in stored_files
+            ):
+
+                new_files.append(
+                    str(file)
+                )
+
+        return new_files
