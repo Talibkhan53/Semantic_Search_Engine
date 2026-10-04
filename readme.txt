@@ -1,218 +1,118 @@
 # Semantic Search Engine
 
-A lightweight semantic search engine built from scratch in Python using **Sentence Transformers and NumPy**.
+A simple semantic search engine built with Python. It uses sentence embeddings and cosine similarity to find documents that are semantically related to a user's query.
 
-The project takes a directory of text files, converts their contents into vector embeddings, stores those embeddings locally, and uses **cosine similarity** to find the documents most relevant to a user's query.
-
-The project focuses on understanding the core concepts behind semantic search and vector-based retrieval rather than relying on frameworks such as LangChain or external vector databases.
+The project was built to understand how semantic search works internally without using frameworks such as LangChain or external vector databases.
 
 ## Features
 
-* Load text files from a directory
-* Generate semantic embeddings using `all-MiniLM-L6-v2`
-* Store embeddings locally in JSON
-* Store the source path and file name with each embedding
-* Detect whether a directory has already been indexed
-* Reuse previously generated embeddings
-* Calculate cosine similarity using NumPy
-* Rank search results by similarity score
-* Return Top-K search results
-* Use a structured `SearchResult` object
-* Separate search logic from result display
-* Modular architecture with separate components for loading, embedding, storage, similarity, and searching
+- Load text files from a directory
+- Generate embeddings using Sentence Transformers
+- Store embeddings locally in JSON
+- Reuse existing embeddings
+- Detect and update existing stored embeddings
+- Convert user queries into embeddings
+- Calculate cosine similarity
+- Rank search results by similarity score
+- Return relevant documents
+- Modular project structure
 
-## Architecture
+## How It Works
 
-```text
-                         system.py
-                             |
-                             v
-                       SearchEngine
-                             |
-          +------------------+------------------+
-          |                  |                  |
-          v                  v                  v
-       Loader            Embedding        VectorStore
-                                               |
-                                        path_exists()
-                                               |
-                                  +------------+------------+
-                                  |                         |
-                                YES                        NO
-                                  |                         |
-                                  v                         v
-                          load_embeddings()             Loader
-                                                            |
-                                                            v
-                                                        Embedding
-                                                            |
-                                                            v
-                                                     store vectors
-                                  |                         |
-                                  +------------+------------+
-                                               |
-                                               v
-                                       SemanticSearch
-                                               |
-                                               v
-                                          Similarity
-                                               |
-                                               v
-                                        SearchResult
-                                               |
-                                               v
-                                            Display
-```
+The system follows this basic process:
+
+1. Load documents from a directory.
+2. Generate embeddings for the documents.
+3. Store the embeddings in the local vector store.
+4. Take the user's search query.
+5. Generate an embedding for the query.
+6. Compare the query embedding with stored document embeddings.
+7. Calculate cosine similarity.
+8. Sort the results based on similarity score.
+9. Display the most relevant results.
 
 ## Project Structure
 
 ```text
-Search Engine/
+Semantic_Search_Engine/
 │
 ├── Data/
-│   ├── cat.txt
-│   ├── got.txt
-│   ├── llm.txt
-│   └── python.txt
-│
 ├── Embeddings/
-│   └── embedding.py
-│
 ├── Loader/
-│   └── loader.py
-│
 ├── Result/
-│   ├── display.py
-│   └── result.py
-│
 ├── Search/
-│   ├── search_engine.py
-│   └── semantic_search.py
-│
 ├── Similarity/
-│   └── similarity.py
-│
 ├── System/
-│   └── system.py
-│
 ├── VectorStore/
-│   └── vector_store.py
 │
 ├── .gitignore
 ├── README.md
-└── requirements.txt
+├── requirements.txt
+└── execptions.py
 ```
 
-## How It Works
+## Technologies Used
 
-### 1. User provides a directory
+- Python
+- NumPy
+- Sentence Transformers
+- JSON
+- Object-Oriented Programming
 
-For example:
+## Embedding Model
+
+The project currently uses:
 
 ```text
-D:\Projects\Search Engine\Data
+all-MiniLM-L6-v2
 ```
 
-The system checks whether this directory has already been indexed.
+The model converts documents and search queries into numerical vectors that can be compared based on their semantic meaning.
 
-### 2. If the directory has not been indexed
+## Vector Store
 
-The system:
+The project uses a custom local vector store instead of an external vector database.
 
-```text
-Directory
-    ↓
-Loader
-    ↓
-Text files
-    ↓
-Embedding Model
-    ↓
-Vector embeddings
-    ↓
-VectorStore
-```
+The vector store is responsible for:
 
-The embeddings are stored locally together with the original path and file name.
+- Storing document embeddings
+- Storing file information
+- Loading existing embeddings
+- Reusing existing embeddings
+- Updating embeddings when required
 
-### 3. If the directory has already been indexed
+This was implemented to understand how a basic vector store works internally.
 
-The system loads the existing embeddings instead of generating them again.
+## Search
 
-```text
-Directory
-    ↓
-VectorStore
-    ↓
-Existing embeddings
-```
+The search system uses cosine similarity to compare the query embedding with document embeddings.
 
-This avoids unnecessary embedding computation.
-
-### 4. Query embedding
-
-The user's query is passed through the same embedding model.
-
-```text
-"What is Python?"
-        ↓
-Embedding Model
-        ↓
-Query Vector
-```
-
-### 5. Similarity calculation
-
-The query vector is compared with the stored document vectors using cosine similarity.
-
-The basic formula is:
-
-```text
-                 A · B
-cosine similarity = ---------
-                   ||A|| ||B||
-```
-
-A higher value means the vectors point in a more similar direction.
-
-### 6. Ranking
-
-The similarity scores are sorted from highest to lowest.
+A higher similarity score means that the document is more semantically related to the query.
 
 Example:
 
 ```text
-Rank    File                 Score
----------------------------------------
-1       python.txt           0.73
-2       llm.txt              0.42
-3       cat.txt              0.18
+Query: What is Python?
+
+python.txt    0.73
+llm.txt       0.42
+cat.txt       0.18
 ```
 
-Only the requested Top-K results are returned.
-
-## Technologies
-
-* **Python**
-* **NumPy**
-* **Sentence Transformers**
-* **JSON**
-* **Object-Oriented Programming**
-* **Cosine Similarity**
-* **Vector Embeddings**
+The results are sorted from highest to lowest similarity score.
 
 ## Installation
 
 Clone the repository:
 
 ```bash
-git clone <YOUR-REPOSITORY-URL>
+git clone https://github.com/Talibkhan53/Semantic_Search_Engine.git
 ```
 
-Enter the project directory:
+Go to the project directory:
 
 ```bash
-cd "Search Engine"
+cd Semantic_Search_Engine
 ```
 
 Create a virtual environment:
@@ -221,13 +121,13 @@ Create a virtual environment:
 python -m venv .venv
 ```
 
-Activate it on Windows:
+Activate the virtual environment on Windows:
 
 ```bash
 .venv\Scripts\activate
 ```
 
-Install dependencies:
+Install the required packages:
 
 ```bash
 pip install -r requirements.txt
@@ -235,87 +135,69 @@ pip install -r requirements.txt
 
 ## Running the Project
 
-From the project root:
+Run:
 
 ```bash
 python System/system.py
 ```
 
-Enter the directory containing your text files:
-
-```text
-Enter Path: D:\Projects\Search Engine\Data
-```
-
-Then enter a query:
-
-```text
-Enter Your Question: What is Python?
-```
-
-The system will return the most semantically similar documents.
+Enter the path containing your text files and then enter your search query.
 
 ## Example
 
 ```text
-Enter Path: D:\Projects\Search Engine\Data
+Enter Path: D:\Projects\Semantic_Search_Engine\Data
+
 Enter Your Question: What is Python?
 
-Path already indexed.
+Results:
 
-Query: What is Python?
+python.txt
+Score: 0.73
 
-Rank    File                Score
---------------------------------------
-1       python.txt          0.73
-2       llm.txt             0.42
-3       cat.txt             0.18
+llm.txt
+Score: 0.42
+
+cat.txt
+Score: 0.18
 ```
 
-The exact scores will vary depending on the contents of the documents and embedding model.
+## What I Learned
 
-## Why This Project?
+While building this project, I worked with:
 
-The purpose of this project is to understand the fundamental components behind semantic retrieval:
-
-```text
-Documents
-   ↓
-Embeddings
-   ↓
-Vector Storage
-   ↓
-Query Embedding
-   ↓
-Similarity Search
-   ↓
-Ranked Results
-```
-
-Rather than hiding these concepts behind a high-level framework, the project implements the retrieval pipeline directly.
+- Text processing
+- Python modules and packages
+- Object-oriented programming
+- NumPy arrays
+- Sentence embeddings
+- Vector representations
+- Cosine similarity
+- Semantic search
+- JSON data storage
+- Incremental embedding updates
+- Building a simple vector store from scratch
 
 ## Future Improvements
 
-Possible future improvements include:
+Some possible improvements are:
 
-* Text chunking
-* Metadata for individual chunks
-* Incremental indexing when files change
-* Search evaluation and Top-1/Top-K accuracy
-* Similarity score thresholds
-* Batch embedding
-* Better handling of different file types
-* Persistent metadata management
-* LLM-based answer generation using retrieved documents
+- Document chunking
+- Chunk-level embeddings
+- Support for more file formats
+- Better indexing
+- Search filters
+- Hybrid keyword and semantic search
+- Search evaluation
+- Reranking
+- LLM-based answers
 
-## Current Limitations
+## Project Status
 
-* The current loader focuses on text files.
-* Embeddings are stored in a JSON file rather than a dedicated vector database.
-* The entire document is embedded as one vector.
-* Changes inside already-indexed files are not currently detected automatically.
-* Search results contain document-level similarity rather than chunk-level similarity.
+The core semantic search system is implemented.
+
+The project will continue to be improved by enhancing the existing components and gradually adding useful search capabilities.
 
 ## License
 
-This project is provided for learning and educational purposes.
+This project is created for learning and educational purposes.
