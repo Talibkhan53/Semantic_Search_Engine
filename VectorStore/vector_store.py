@@ -111,7 +111,7 @@ class VectorStore:
                 return True
 
         return False
-    
+        
     # LOAD EMBEDDINGS
     def load_embeddings(self, path):
 
