@@ -1,9 +1,5 @@
 from Search.search_engine import SearchEngine
-
-
 engine = SearchEngine()
-
-
 # USER INPUT
 
 path = input("Enter Path: ").strip()

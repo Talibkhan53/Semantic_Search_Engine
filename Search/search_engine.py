@@ -64,8 +64,10 @@ class SearchEngine:
                     # Load changed file
                     file_data = (self.loader.file_loads(file_path))
 
+                    file_chunk = self.chunking.chunk_text(file_data)
+
                     # Create new embedding
-                    new_embedding = (self.embedding.embed_file(file_data))
+                    new_embedding = (self.embedding.embed_file(file_chunk))
 
                     updated_embeddings.update(new_embedding)
 

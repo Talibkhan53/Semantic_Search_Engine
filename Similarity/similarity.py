@@ -1,25 +1,40 @@
 import numpy as np 
 class Similarity:
-    def cosine_similarity(self,files_content,query_embed):
+    def cosine_similarity(self,file_content,query_embed):
         result_score = {}
-        for file_name,file_embedding in files_content.items():
 
-            distance_from_origin_files_content = np.linalg.norm(file_embedding) 
+        query_embed = np.asarray(query_embed,dtype=float)
+        query_norm = np.linalg.norm(query_embed)
 
-            distance_from_origin_query = np.linalg.norm(query_embed) 
+        if query_norm == 0:
+            raise ValueError("Query embedding cannot be a zero vector.")
 
-            distance_from_origin = distance_from_origin_query * distance_from_origin_files_content
+        for file_name , file_embedding in file_content.items():
+            file_embedding = np.asarray(file_embedding,dtype=float)
+            
+            # No chunks or empty embeddings
+            if file_embedding.size == 0:
+                continue
 
-            dot_product = np.dot(query_embed,file_embedding)
+            # A single embedding has shape (dimensions,).
+            # Multiple chunk embeddings have shape (chunks, dimensions).
+            if file_embedding.ndim == 1:
+                file_embedding = file_embedding.reshape(1, -1)
 
-            angle = dot_product / distance_from_origin
+            if file_embedding.ndim != 2:
+                raise ValueError(
+                    f"Invalid embedding dimensions for {file_name}"
+                )
+            norms = np.linalg.norm(file_embedding, axis=1)
+            valid = norms > 0
+            if not np.any(valid):
+                continue
+            scores = (
+            file_embedding[valid] @ query_embed) / (norms[valid] * query_norm)
 
-            result_score[file_name] = angle
-
+            # Keep the best matching chunk's score for this file
+            result_score[file_name] = float(np.max(scores))
         return result_score
-
-
-    
 
     def tradional_search(self,files_content,query):
         result = {}
