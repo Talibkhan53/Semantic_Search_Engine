@@ -1,203 +1,196 @@
 # Semantic Search Engine
 
-A simple semantic search engine built with Python. It uses sentence embeddings and cosine similarity to find documents that are semantically related to a user's query.
-
-The project was built to understand how semantic search works internally without using frameworks such as LangChain or external vector databases.
+A Python-based semantic search engine that finds text files related to a user's query by comparing sentence embeddings. The project began as a custom implementation of the semantic-search pipeline and now exposes its core functionality through a FastAPI web API.
 
 ## Features
 
-- Load text files from a directory
-- Generate embeddings using Sentence Transformers
-- Store embeddings locally in JSON
-- Reuse existing embeddings
-- Detect and update existing stored embeddings
-- Convert user queries into embeddings
-- Calculate cosine similarity
-- Rank search results by similarity score
-- Return relevant documents
-- Modular project structure
+- Load `.txt` files from a directory
+- Split document text into chunks
+- Generate text embeddings with Sentence Transformers
+- Persist embeddings and file metadata in a local JSON-based vector store
+- Reuse existing embeddings and refresh the index when files change
+- Detect newly added and deleted files
+- Compare query embeddings with document embeddings using cosine similarity
+- Rank results and return the most relevant files
+- Expose health, document-loading, and search endpoints through FastAPI
+- Keep the code separated into loader, chunking, embedding, storage, search, and API modules
 
 ## How It Works
 
-The system follows this basic process:
+1. The loader reads supported text files from the selected directory.
+2. The chunking component splits each document into smaller text segments.
+3. The embedding model converts each chunk into a numerical vector.
+4. The vector store saves the vectors and associated file metadata locally.
+5. A search query is converted into an embedding using the same model.
+6. The search component compares the query embedding with stored chunk embeddings using cosine similarity.
+7. Results are ranked and returned to the caller.
 
-1. Load documents from a directory.
-2. Generate embeddings for the documents.
-3. Store the embeddings in the local vector store.
-4. Take the user's search query.
-5. Generate an embedding for the query.
-6. Compare the query embedding with stored document embeddings.
-7. Calculate cosine similarity.
-8. Sort the results based on similarity score.
-9. Display the most relevant results.
+When a directory is indexed again, the service checks for changed, new, and deleted files so it can update the stored data rather than always rebuilding the whole index.
+
+## Tech Stack
+
+- **Python** — application logic
+- **FastAPI** — HTTP API
+- **Uvicorn** — ASGI server for running the API
+- **Sentence Transformers** — text embedding model
+- **NumPy** — numerical operations
+- **JSON** — current local persistence format
+- **Pydantic** — request-body validation
+
+## Embedding Model
+
+The project uses `all-MiniLM-L6-v2` through Sentence Transformers. It maps text to dense numerical vectors so semantically related text can have similar vector representations.
 
 ## Project Structure
 
 ```text
-Semantic_Search_Engine/
-│
-├── Data/
-├── Embeddings/
-├── Loader/
-├── Result/
-├── Search/
-├── Similarity/
-├── System/
-├── VectorStore/
-│
-├── .gitignore
-├── README.md
-├── requirements.txt
-└── execptions.py
+Search Engine/
+├── api/
+│   └── routes/
+│       ├── dependencies.py   # Shared SearchEngine instance
+│       ├── documents.py      # Document indexing endpoint
+│       ├── health.py         # Health endpoint
+│       └── search.py         # Search endpoint and request validation
+├── Chunking/                 # Text chunking
+├── Data/                     # Example .txt documents
+├── Embeddings/               # Sentence embedding generation
+├── Loader/                   # Text-file loading
+├── Result/                   # Search-result display and result model
+├── Search/                   # Semantic search orchestration
+├── Services/                 # SearchEngine workflow
+├── Similarity/               # Similarity calculation
+├── System/                   # Original command-line entry point
+├── VectorStore/              # JSON-based vector persistence
+├── main.py                   # FastAPI application entry point
+└── requirements.txt
 ```
-
-## Technologies Used
-
-- Python
-- NumPy
-- Sentence Transformers
-- JSON
-- Object-Oriented Programming
-
-## Embedding Model
-
-The project currently uses:
-
-```text
-all-MiniLM-L6-v2
-```
-
-The model converts documents and search queries into numerical vectors that can be compared based on their semantic meaning.
-
-## Vector Store
-
-The project uses a custom local vector store instead of an external vector database.
-
-The vector store is responsible for:
-
-- Storing document embeddings
-- Storing file information
-- Loading existing embeddings
-- Reusing existing embeddings
-- Updating embeddings when required
-
-This was implemented to understand how a basic vector store works internally.
-
-## Search
-
-The search system uses cosine similarity to compare the query embedding with document embeddings.
-
-A higher similarity score means that the document is more semantically related to the query.
-
-Example:
-
-```text
-Query: What is Python?
-
-python.txt    0.73
-llm.txt       0.42
-cat.txt       0.18
-```
-
-The results are sorted from highest to lowest similarity score.
 
 ## Installation
 
-Clone the repository:
+Use Python 3.10 or later in a virtual environment. From the project directory, create and activate the environment on Windows:
 
-```bash
-git clone https://github.com/Talibkhan53/Semantic_Search_Engine.git
-```
-
-Go to the project directory:
-
-```bash
-cd Semantic_Search_Engine
-```
-
-Create a virtual environment:
-
-```bash
+```powershell
 python -m venv .venv
+.venv\Scripts\Activate.ps1
 ```
 
-Activate the virtual environment on Windows:
+Install the API and semantic-search dependencies:
 
 ```bash
-.venv\Scripts\activate
+python -m pip install fastapi "uvicorn[standard]" numpy sentence-transformers
 ```
 
-Install the required packages:
+> The first run of Sentence Transformers may download the embedding model, so an internet connection may be required initially.
+
+## Run the API
+
+From the project root—the directory containing `main.py`—run:
 
 ```bash
-pip install -r requirements.txt
+python -m uvicorn main:app --reload
 ```
 
-## Running the Project
+The local API will be available at `http://127.0.0.1:8000`.
 
-Run:
+### Interactive API documentation
+
+Open `http://127.0.0.1:8000/docs` to try the endpoints using Swagger UI.
+
+### Endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/health` | Check that the API is running. |
+| `POST` | `/load?path=...` | Index or refresh `.txt` files in a directory. |
+| `POST` | `/search` | Search a directory and return ranked results. |
+
+#### 1. Health check
+
+```http
+GET /health
+```
+
+Example response:
+
+```json
+{
+  "Status": "Healthy"
+}
+```
+
+#### 2. Load documents
+
+Send the directory path as a query parameter. For example, when running locally on Windows:
+
+```http
+POST /load?path=D%3A%5CProjects%5CSemantic_Search_Engine%5CData
+```
+
+Use your own absolute directory path. The directory must exist and contain at least one `.txt` file.
+
+A successful response reports the indexing status, directory, number of indexed file entries, and file names.
+
+#### 3. Search documents
+
+Send a JSON request body to `POST /search`:
+
+```json
+{
+  "path": "D:\\Projects\\Semantic_Search_Engine\\Data",
+  "query": "What is Python?",
+  "top_k": 3
+}
+```
+
+Fields:
+
+- `path` — directory containing the `.txt` files
+- `query` — search text; must contain at least three non-whitespace characters
+- `top_k` — number of results requested, from `1` to `20` (defaults to `3`)
+
+The response contains the normalized query, result count, and ranked results with file names and similarity scores. The search workflow also prepares or refreshes the index as needed, so calling `/load` first is not strictly required for a search.
+
+## Run the Original CLI
+
+The original command-line workflow is also available:
 
 ```bash
 python System/system.py
 ```
 
-Enter the path containing your text files and then enter your search query.
+Follow the prompts to enter a directory path and a search query.
 
-## Example
+## Current Storage Design
 
-```text
-Enter Path: D:\Projects\Semantic_Search_Engine\Data
+The current vector store is a custom JSON-based implementation. It stores embeddings and file metadata locally and is useful for learning how indexing and persistence work. It is not a dedicated vector database; moving the persistence and similarity-search layer to ChromaDB is a planned improvement.
 
-Enter Your Question: What is Python?
+## Current Limitations
 
-Results:
+- Input documents are currently limited to `.txt` files.
+- The JSON file is a simple local store and may become inefficient as the collection grows.
+- Search scores measure vector similarity; they are not a guarantee that a result answers the query correctly.
+- The API currently accepts a local filesystem path, so it is intended for trusted local use. A public deployment should not expose arbitrary server paths without access controls and stricter path restrictions.
+- Automated API tests and deployment configuration are still to be added.
 
-python.txt
-Score: 0.73
+## Roadmap
 
-llm.txt
-Score: 0.42
+- Complete API smoke tests and error-case tests
+- Keep dependency declarations clean and reproducible
+- Replace JSON-based vector persistence with ChromaDB
+- Preserve file metadata and incremental indexing during the storage migration
+- Add automated tests for loading, updates, deletion, and search
+- Deploy the API with appropriate path restrictions and configuration
 
-cat.txt
-Score: 0.18
-```
+## What This Project Demonstrates
 
-## What I Learned
-
-While building this project, I worked with:
-
-- Text processing
-- Python modules and packages
-- Object-oriented programming
-- NumPy arrays
-- Sentence embeddings
-- Vector representations
-- Cosine similarity
-- Semantic search
-- JSON data storage
-- Incremental embedding updates
-- Building a simple vector store from scratch
-
-## Future Improvements
-
-Some possible improvements are:
-
-- Document chunking
-- Chunk-level embeddings
-- Support for more file formats
-- Better indexing
-- Search filters
-- Hybrid keyword and semantic search
-- Search evaluation
-- Reranking
-- LLM-based answers
-
-## Project Status
-
-The core semantic search system is implemented.
-
-The project will continue to be improved by enhancing the existing components and gradually adding useful search capabilities.
+- Python modular design and object-oriented programming
+- Text preprocessing and chunking
+- Dense vector embeddings
+- Cosine similarity and ranking
+- Incremental indexing and local persistence
+- Request validation and error handling with FastAPI and Pydantic
+- Separating API routes from the underlying search-engine workflow
 
 ## License
 
-This project is created for learning and educational purposes.
+Created for learning and educational purposes.

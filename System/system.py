@@ -1,4 +1,4 @@
-from Search.search_engine import SearchEngine
+from Services.search_engine import SearchEngine
 engine = SearchEngine()
 # USER INPUT
 

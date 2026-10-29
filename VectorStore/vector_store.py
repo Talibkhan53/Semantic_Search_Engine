@@ -409,6 +409,7 @@ class VectorStore:
 
             if (
                 file.is_file()
+                and file.suffix.lower() == ".txt"
                 and file.name not in stored_files
             ):
 

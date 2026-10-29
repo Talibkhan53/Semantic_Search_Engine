@@ -30,24 +30,23 @@ class SearchEngine:
 
         self.display = Display()
 
-    # --------------------------------------------------
     # PREPARE DATA
-    # --------------------------------------------------
 
     def prepare_data(self, path):
 
         print("Path:", path)
-
-        # ==================================================
         # PATH ALREADY INDEXED
-        # ==================================================
+
+        info = {}
 
         if self.vector_store.path_exists(path):
 
             logging.info("Path already indexed.")
-            # --------------------------------------------------
+
+            info["Path Exist"] = "Path Already Exist"
+
+           
             # 1. CHECK CHANGED FILES
-            # --------------------------------------------------
 
             changed_files = (self.vector_store.get_changed_files(path))
 
@@ -55,11 +54,15 @@ class SearchEngine:
 
                 logging.warning("Changes detected in files.")
 
+                info["Files Changed"] = "Changes in Files"
+
                 updated_embeddings = {}
 
                 for file_path in changed_files:
 
                     print("Changed File:",file_path)
+
+                    
 
                     # Load changed file
                     file_data = (self.loader.file_loads(file_path))
@@ -77,9 +80,7 @@ class SearchEngine:
             else:
                 logging.info("No changes in existing files.")
 
-            # --------------------------------------------------
             # 2. CHECK DELETED FILES
-            # --------------------------------------------------
 
             deleted_files = (self.vector_store.get_deleted_files(path))
 
@@ -91,9 +92,7 @@ class SearchEngine:
             else:
                 logging.info("No deleted files.")
 
-            # --------------------------------------------------
             # 3. CHECK NEW FILES
-            # --------------------------------------------------
 
             new_files = (self.vector_store.get_new_files(path))
 
@@ -122,18 +121,13 @@ class SearchEngine:
 
             else:
                 logging.info("No new files.")
-
-            # --------------------------------------------------
             # 4. LOAD CURRENT EMBEDDINGS
-            # --------------------------------------------------
 
             logging.info("Loading current embeddings.")
 
             return self.vector_store.load_embeddings(path)
 
-        # ==================================================
         # PATH NOT INDEXED
-        # ==================================================
 
         else:
             logging.warning("Path not indexed.")
@@ -152,11 +146,11 @@ class SearchEngine:
             # Store embeddings
             self.vector_store.store_file_vectors(embeddings,path)
 
+
+
             return embeddings
 
-    # --------------------------------------------------
     # SEARCH
-    # --------------------------------------------------
 
     def search(self,path,query,top_k=3):
 
