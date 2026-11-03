@@ -1,34 +1,38 @@
-from Similarity.similarity import Similarity
+
 from Result.result import SearchResult
+from VectorStore.vector_store import VectorStore
 
 
 class SemanticSearch:
 
-    def __init__(self):
-        self.similarity = Similarity()
+    def __init__(
+        self,
+        vector_store: VectorStore | None = None,
+    ):
+        self.vector_store = vector_store or VectorStore()
 
-    def search(self, files_content, query_embed, top_k=3):
+    def search(
+        self,
+        query_embedding,
+        top_k: int = 3,
+        directory: str | None = None,
+    ):
 
-        scores = self.similarity.cosine_similarity(
-            files_content,
-            query_embed
+        matches = self.vector_store.search_chunks(
+            query_embedding=query_embedding,
+            top_k=top_k,
+            directory=directory,
         )
 
-        ranked_scores = sorted(
-            scores.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )
-
-        results = []
-
-        for file_name, score in ranked_scores[:top_k]:
-
-            results.append(
-                SearchResult(
-                    file_name=file_name,
-                    score=float(score)
-                )
+        return [
+            SearchResult(
+                file_name=match["metadata"]["file_name"],
+                score=float(match["score"]),
+                text=match["text"],
+                chunk_index=int(
+                    match["metadata"]["chunk_index"]
+                ),
+                distance=float(match["distance"]),
             )
-
-        return results
+            for match in matches
+        ]

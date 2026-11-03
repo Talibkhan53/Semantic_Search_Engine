@@ -1,420 +1,241 @@
-import json
-import numpy as np
+
 from pathlib import Path
+from typing import Any
 import logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)s: %(message)s"
-)
+import chromadb
+
+logger = logging.getLogger(__name__)
 
 
 class VectorStore:
+    """Persistent ChromaDB storage for document chunks."""
 
-    def __init__(self, file_name="file_embed_data.json"):
+    def __init__(self, db_path: str = "chroma_data") -> None:
+        self.client = chromadb.PersistentClient(path=db_path)
 
-        self.file_name = file_name
+        self.collection = self.client.get_or_create_collection(
+            name="semantic_search",
+            configuration={"hnsw": {"space": "cosine"}},
+        )
 
-    # STORE NEW EMBEDDINGS
-    def store_file_vectors(self, file_embed, path):
+    @staticmethod
+    def _as_list(vector: Any) -> list[float]:
+        if hasattr(vector, "tolist"):
+            vector = vector.tolist()
 
-        directory = Path(path).resolve()
+        return [float(value) for value in vector]
 
-        data = {}
+    def get_indexed_files(self, directory: str) -> dict[str, float]:
+        """Return indexed filenames and their modification times."""
 
-        try:
+        directory_path = str(Path(directory).expanduser().resolve())
 
-            with open(self.file_name, "r") as file:
-                data = json.load(file)
+        records = self.collection.get(
+            where={"directory": directory_path},
+            include=["metadatas"],
+        )
 
-        except (FileNotFoundError, json.JSONDecodeError):
+        indexed: dict[str, float] = {}
 
-            data = {}
+        for metadata in records.get("metadatas") or []:
+            if not metadata:
+                continue
 
-        # Find next index
-        if data:
+            name = metadata.get("file_name")
+            file_time = metadata.get("file_time")
 
-            index = max(
-                map(int, data.keys())
-            ) + 1
+            if name is not None and file_time is not None:
+                indexed[str(name)] = float(file_time)# type: ignore
 
-        else:
+        return indexed
 
-            index = 1
+    def path_exists(self, path: str) -> bool:
+        return bool(self.get_indexed_files(path))
 
-        # Store embeddings
-        for file_name, embedding in file_embed.items():
+    def store_file_chunks(
+        self,
+        chunks: dict[str, list[str]],
+        embeddings: dict[str, Any],
+        directory: str,
+    ) -> None:
+        directory_path = Path(directory).expanduser().resolve()
 
-            file_path = directory / file_name
+        for file_name, file_chunks in chunks.items():
 
-            data[str(index)] = {
+            if not file_chunks:
+                self.delete_file_chunks(
+                    str(directory_path), file_name
+                )
+                continue
 
-                "path": str(directory),
+            file_embeddings = embeddings.get(file_name)
 
-                "file_time": file_path.stat().st_mtime,
+            if file_embeddings is None:
+                raise ValueError(
+                    f"Embeddings missing for file: {file_name}"
+                )
 
-                "file_name": file_name,
+            if len(file_chunks) != len(file_embeddings):
+                raise ValueError(
+                    f"Chunk and embedding count mismatch for "
+                    f"{file_name}: {len(file_chunks)} chunks, "
+                    f"{len(file_embeddings)} embeddings"
+                )
 
-                "file_embed": (
-                    embedding.tolist()
-                    if isinstance(embedding, np.ndarray)
-                    else embedding
+            file_path = (directory_path / file_name).resolve()
+
+            if not file_path.is_file():
+                raise FileNotFoundError(
+                    f"Source file not found: {file_path}"
+                )
+
+            file_time = file_path.stat().st_mtime
+
+            ids = [
+                f"{file_path}::chunk_{i}"
+                for i in range(len(file_chunks))
+            ]
+
+            metadatas = [
+                {
+                    "file_path": str(file_path),
+                    "directory": str(directory_path),
+                    "file_name": file_name,
+                    "chunk_index": i,
+                    "file_time": float(file_time),
+                }
+                for i in range(len(file_chunks))
+            ]
+
+            vectors = [
+                self._as_list(vector)
+                for vector in file_embeddings
+            ]
+
+            # Remove stale chunks when a file is re-indexed.
+            self.delete_file_chunks(
+                str(directory_path), file_name
+            )
+
+            self.collection.upsert(
+                ids=ids,
+                documents=file_chunks,
+                embeddings=vectors,# type: ignore
+                metadatas=metadatas,  # type: ignore
+            )
+
+            logger.info(
+                "Indexed %d chunks from %s",
+                len(file_chunks),
+                file_name,
+            )
+
+    def delete_file_chunks(
+        self,
+        directory: str,
+        file_name: str,
+    ) -> None:
+        directory_path = str(
+            Path(directory).expanduser().resolve()
+        )
+
+        self.collection.delete(
+            where={
+                "$and": [
+                    {"directory": directory_path},
+                    {"file_name": file_name},
+                ]
+            }
+        )
+
+    def delete_files(
+        self,
+        directory: str,
+        file_names: list[str],
+    ) -> None:
+        for file_name in set(file_names):
+            self.delete_file_chunks(directory, file_name)
+
+            logger.info(
+                "Removed indexed chunks for deleted file %s",
+                file_name,
+            )
+
+    def search_chunks(
+        self,
+        query_embedding: Any,
+        top_k: int = 3,
+        directory: str | None = None,
+    ) -> list[dict[str, Any]]:
+
+        if top_k <= 0:
+            return []
+
+        count = self.collection.count()
+
+        if count == 0:
+            return []
+
+        query_args: dict[str, Any] = {
+            "query_embeddings": [
+                self._as_list(query_embedding)
+            ],
+            "n_results": min(top_k, count),
+            "include": [
+                "documents",
+                "metadatas",
+                "distances",
+            ],
+        }
+
+        if directory is not None:
+            query_args["where"] = {
+                "directory": str(
+                    Path(directory).expanduser().resolve()
                 )
             }
 
-            index += 1
-
-        with open(self.file_name, "w") as file:
-
-            json.dump(
-                data,
-                file,
-                indent=4
-            )
-
-        logging.info("Vectors stored successfully.")
-
-    # CHECK PATH
-    def path_exists(self, path):
-
-        path = Path(path).resolve()
-
-        print(f"Current Path: {path}")
-
-        try:
-
-            with open(self.file_name, "r") as file:
-                data = json.load(file)
-
-        except (FileNotFoundError, json.JSONDecodeError):
-
-            logging.warning(
-                "Vector store could not be loaded."
-            )
-
-            return False
-
-        for item in data.values():
-
-            stored_path = Path(
-                item["path"]
-            ).resolve()
-
-            logging.info(
-                f"Stored Path: {stored_path}"
-            )
-
-            if stored_path == path:
-
-                logging.info("Path Matched.")
-
-                return True
-
-        return False
-        
-    # LOAD EMBEDDINGS
-    def load_embeddings(self, path):
-
-        path = Path(path).resolve()
-
-        try:
-
-            with open(self.file_name, "r") as file:
-                data = json.load(file)
-
-        except (FileNotFoundError, json.JSONDecodeError):
-
-            return {}
-
-        embeddings = {}
-
-        for item in data.values():
-
-            stored_path = Path(
-                item["path"]
-            ).resolve()
-
-            if stored_path == path:
-
-                file_name = item["file_name"]
-
-                embedding = np.array(
-                    item["file_embed"]
-                )
-
-                embeddings[file_name] = embedding
-
-        return embeddings
-
-    # GET CHANGED FILES
-    def get_changed_files(self, path):
-
-        changed_files = []
-
-        try:
-
-            with open(self.file_name, "r") as file:
-                data = json.load(file)
-
-        except (FileNotFoundError, json.JSONDecodeError):
-
-            return changed_files
-
-        directory = Path(path).resolve()
-
-        for item in data.values():
-
-            stored_path = Path(
-                item["path"]
-            ).resolve()
-
-            # Only check files belonging
-            # to requested directory
-            if stored_path != directory:
-                continue
-
-            file_path = directory / item["file_name"]
-
-            # File was deleted
-            if not file_path.exists():
-
-                continue
-
-            current_time = file_path.stat().st_mtime
-
-            stored_time = item["file_time"]
-
-            # File was modified
-            if current_time != stored_time:
-
-                changed_files.append(
-                    str(file_path)
-                )
-
-        return changed_files
-
-    # UPDATE EXISTING EMBEDDINGS
-    def update_existing_embeddings(
-        self,
-        path,
-        new_embeddings
-    ):
-
-        directory = Path(path).resolve()
-
-        try:
-
-            with open(self.file_name, "r") as file:
-                data = json.load(file)
-
-        except (FileNotFoundError, json.JSONDecodeError):
-
-            logging.warning(
-                "Error loading vector store."
-            )
-
-            return
-
-        # Go through new embeddings
-        for file_name, embedding in new_embeddings.items():
-
-            file_path = directory / file_name
-
-            if not file_path.exists():
-                continue
-
-            # Find existing record
-            for item in data.values():
-
-                stored_path = Path(
-                    item["path"]
-                ).resolve()
-
-                if (
-                    stored_path == directory
-                    and item["file_name"] == file_name
-                ):
-
-                    # Update embedding
-                    item["file_embed"] = (
-                        embedding.tolist()
-                        if isinstance(
-                            embedding,
-                            np.ndarray
-                        )
-                        else embedding
-                    )
-
-                    # IMPORTANT:
-                    # Update modification time
-                    item["file_time"] = (
-                        file_path.stat().st_mtime
-                    )
-
-                    logging.info(
-                        f"Embedding updated: {file_name}"
-                    )
-
-                    break
-
-        # Save updated vector store
-        with open(self.file_name, "w") as file:
-
-            json.dump(
-                data,
-                file,
-                indent=4
-            )
-
-        logging.info(
-            "Existing embeddings updated successfully."
-        )
-
-    # GET DELETED FILES
-    def get_deleted_files(self, path):
-
-        deleted_files = []
-
-        directory = Path(path).resolve()
-
-        try:
-
-            with open(self.file_name, "r") as file:
-                data = json.load(file)
-
-        except (FileNotFoundError, json.JSONDecodeError):
-
-            return deleted_files
-
-        for item in data.values():
-
-            stored_path = Path(
-                item["path"]
-            ).resolve()
-
-            if stored_path != directory:
-                continue
-
-            file_path = directory / item["file_name"]
-
-            if not file_path.exists():
-
-                deleted_files.append(
-                    item["file_name"]
-                )
-
-        return deleted_files
-
-    # DELETE EMBEDDINGS
-
-    def delete_embeddings(
-        self,
-        path,
-        file_names
-    ):
-
-        directory = Path(path).resolve()
-
-        try:
-
-            with open(self.file_name, "r") as file:
-                data = json.load(file)
-
-        except (FileNotFoundError, json.JSONDecodeError):
-
-            logging.warning(
-                "Error loading vector store."
-            )
-
-            return
-
-        deleted = []
-
-        # list() is important because
-        # we are deleting while iterating
-        for key, item in list(data.items()):
-
-            stored_path = Path(
-                item["path"]
-            ).resolve()
-
+        results = self.collection.query(**query_args)
+
+        documents = results.get("documents")
+        metadatas = results.get("metadatas")
+        distances = results.get("distances")
+
+        if documents is None or metadatas is None or distances is None:
+            return []
+
+        if not documents or not metadatas or not distances:
+            return []
+
+        if (
+            documents[0] is None
+            or metadatas[0] is None
+            or distances[0] is None
+        ):
+            return []
+
+        matches = []
+
+        for document, metadata, distance in zip(
+            documents[0],
+            metadatas[0],
+            distances[0],
+        ):
             if (
-                stored_path == directory
-                and item["file_name"] in file_names
+                document is None
+                or metadata is None
+                or distance is None
             ):
+                continue
 
-                deleted.append(
-                    item["file_name"]
-                )
+            distance_value = float(distance)
 
-                del data[key]
+            matches.append({
+                "text": document,
+                "metadata": metadata,
+                "distance": distance_value,
+                "score": 1.0 - distance_value,
+            })
 
-        # Save only if something was deleted
-        if deleted:
-
-            with open(self.file_name, "w") as file:
-
-                json.dump(
-                    data,
-                    file,
-                    indent=4
-                )
-
-            for file_name in deleted:
-
-                logging.info(
-                    f"Embedding deleted: {file_name}"
-                )
-
-    # GET NEW FILES
-    def get_new_files(self, path):
-
-        directory = Path(path).resolve()
-
-        new_files = []
-
-        try:
-
-            with open(self.file_name, "r") as file:
-                data = json.load(file)
-
-        except (FileNotFoundError, json.JSONDecodeError):
-
-            # If vector store doesn't exist,
-            # all files are new
-            return [
-                str(file)
-                for file in directory.iterdir()
-                if file.is_file()
-            ]
-
-        stored_files = set()
-
-        for item in data.values():
-
-            stored_path = Path(
-                item["path"]
-            ).resolve()
-
-            if stored_path == directory:
-
-                stored_files.add(
-                    item["file_name"]
-                )
-
-        if not directory.exists():
-            return new_files
-
-        for file in directory.iterdir():
-
-            if (
-                file.is_file()
-                and file.suffix.lower() == ".txt"
-                and file.name not in stored_files
-            ):
-
-                new_files.append(
-                    str(file)
-                )
-
-        return new_files
+        return matches

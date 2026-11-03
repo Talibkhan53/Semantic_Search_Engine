@@ -1,175 +1,132 @@
+
+from pathlib import Path
+import logging
+
 from Loader.loader import Loader
 from Embeddings.embedding import Embedding
 from Chunking.chunking import Chunking
 from VectorStore.vector_store import VectorStore
 from Search.semantic_search import SemanticSearch
 from Result.display import Display
-from pathlib import Path
 
-import logging
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)s: %(message)s"
-)
+logger = logging.getLogger(__name__)
 
 
 class SearchEngine:
 
     def __init__(self):
-
         self.loader = Loader()
-
         self.chunking = Chunking()
-
         self.embedding = Embedding()
-
         self.vector_store = VectorStore()
-
-        self.semantic_search = SemanticSearch()
-
+        self.semantic_search = SemanticSearch(
+            self.vector_store
+        )
         self.display = Display()
 
-    # PREPARE DATA
+    def prepare_data(
+        self, path: str | Path
+    ) -> dict[str, list[str]]:
 
-    def prepare_data(self, path):
+        directory = Path(path).expanduser().resolve()
 
-        print("Path:", path)
-        # PATH ALREADY INDEXED
-
-        info = {}
-
-        if self.vector_store.path_exists(path):
-
-            logging.info("Path already indexed.")
-
-            info["Path Exist"] = "Path Already Exist"
-
-           
-            # 1. CHECK CHANGED FILES
-
-            changed_files = (self.vector_store.get_changed_files(path))
-
-            if changed_files:
-
-                logging.warning("Changes detected in files.")
-
-                info["Files Changed"] = "Changes in Files"
-
-                updated_embeddings = {}
-
-                for file_path in changed_files:
-
-                    print("Changed File:",file_path)
-
-                    
-
-                    # Load changed file
-                    file_data = (self.loader.file_loads(file_path))
-
-                    file_chunk = self.chunking.chunk_text(file_data)
-
-                    # Create new embedding
-                    new_embedding = (self.embedding.embed_file(file_chunk))
-
-                    updated_embeddings.update(new_embedding)
-
-                # UPDATE existing records
-                self.vector_store.update_existing_embeddings(path,updated_embeddings)
-
-            else:
-                logging.info("No changes in existing files.")
-
-            # 2. CHECK DELETED FILES
-
-            deleted_files = (self.vector_store.get_deleted_files(path))
-
-            if deleted_files:
-                logging.warning(f"Deleted files: {deleted_files}")
-
-                self.vector_store.delete_embeddings(path,deleted_files)
-
-            else:
-                logging.info("No deleted files.")
-
-            # 3. CHECK NEW FILES
-
-            new_files = (self.vector_store.get_new_files(path))
-
-            if new_files:
-                logging.info(f"New files: {new_files}")
-
-                new_embeddings = {}
-
-                for file_path in new_files:
-
-                    print("New File:",file_path)
-
-                    # Load new file
-                    file_data = (self.loader.file_loads(Path(file_path)))
-
-                    # Chunk the file
-                    file_chunks = self.chunking.chunk_text(file_data)
-
-                    # Create embedding
-                    new_embedding = (self.embedding.embed_file(file_chunks))
-
-                    new_embeddings.update(new_embedding)
-
-                # ADD new records
-                self.vector_store.store_file_vectors(new_embeddings,path)
-
-            else:
-                logging.info("No new files.")
-            # 4. LOAD CURRENT EMBEDDINGS
-
-            logging.info("Loading current embeddings.")
-
-            return self.vector_store.load_embeddings(path)
-
-        # PATH NOT INDEXED
-
-        else:
-            logging.warning("Path not indexed.")
-
-            logging.info("Creating embeddings...")
-
-            # Load all files
-            file_data = (self.loader.file_loads(path))
-
-            # Create Chunks
-            file_chunks = self.chunking.chunk_text(file_data)
-
-            # Create embeddings
-            embeddings = (self.embedding.embed_file(file_chunks))
-
-            # Store embeddings
-            self.vector_store.store_file_vectors(embeddings,path)
-
-
-
-            return embeddings
-
-    # SEARCH
-
-    def search(self,path,query,top_k=3):
-
-        # Get document embeddings
-        embed_data = (
-            self.prepare_data(path))
-
-        # Create query embedding
-        query_embedding = (
-            self.embedding.embed_query(query))
-
-        # Semantic search
-        results = (
-            self.semantic_search.search(embed_data,query_embedding,top_k
-                    )
-                        )
-
-        # Display results
-        self.display.show_results(
-            query,results
+        if not directory.exists():
+            raise FileNotFoundError(
+                f"Directory does not exist: {directory}"
             )
+
+        if not directory.is_dir():
+            raise ValueError(
+                f"Path must be a directory: {directory}"
+            )
+
+        current_files = {
+            file.name: file
+            for file in directory.iterdir()
+            if (
+                file.is_file()
+                and file.suffix.lower() == ".txt"
+                and not file.name.startswith(".")
+            )
+        }
+
+        indexed_files = self.vector_store.get_indexed_files(
+            str(directory)
+        )
+
+        # Remove records for files that no longer exist.
+        deleted_files = (
+            set(indexed_files) - set(current_files)
+        )
+
+        if deleted_files:
+            self.vector_store.delete_files(
+                str(directory),
+                list(deleted_files),
+            )
+
+        files_to_index = []
+
+        for file_name, file_path in current_files.items():
+            stored_time = indexed_files.get(file_name)
+
+            if (
+                stored_time is None
+                or file_path.stat().st_mtime != stored_time
+            ):
+                files_to_index.append(file_path)
+
+        # Load, chunk, embed and store only changed files.
+        for file_path in files_to_index:
+
+            file_data = self.loader.file_loads(file_path)
+
+            chunks = self.chunking.chunk_text(file_data)
+
+            embeddings = self.embedding.embed_file(chunks)
+
+            self.vector_store.store_file_chunks(
+                chunks=chunks,
+                embeddings=embeddings,
+                directory=str(directory),
+            )
+
+            logger.info(
+                "Indexed or updated %s",
+                file_path.name,
+            )
+
+        if not current_files:
+            logger.warning(
+                "No .txt files found in %s",
+                directory,
+            )
+
+        return {
+            name: []
+            for name in current_files
+        }
+
+    def search(
+        self,
+        path: str | Path,
+        query: str,
+        top_k: int = 3,
+    ):
+
+        directory = Path(path).expanduser().resolve()
+
+        # Make sure new and modified files are indexed.
+        self.prepare_data(directory)
+
+        query_embedding = self.embedding.embed_query(query)
+
+        results = self.semantic_search.search(
+            query_embedding=query_embedding,
+            top_k=top_k,
+            directory=str(directory),
+        )
+
+        self.display.show_results(query, results)
+
         return results
